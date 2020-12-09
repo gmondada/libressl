@@ -21,9 +21,9 @@ fi
 
 if [ -z "$LIBRESSL" ]
 then
-  LIBRESSL=3.0.2
+  #LIBRESSL=3.0.2
   #LIBRESSL=3.1.4
-  #LIBRESSL=3.2.1
+  LIBRESSL=3.2.2
 fi
 
 if [ -z "$MACOSX" ]
@@ -38,13 +38,14 @@ declare -a appleSiliconTargets=("simulator_arm64" "simulator_x86_64" "catalyst_x
 if [ -z "$libressl_build_targets" ]
 then
   #declare -a libressl_build_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
-  declare -a libressl_build_targets=("simulator_x86_64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
+  #declare -a libressl_build_targets=("simulator_x86_64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
+  declare -a libressl_build_targets=("simulator_x86_64" "catalyst_x86_64" "macos_x86_64" "ios-arm64")
 fi
 
 if [ -z "$libressl_link_targets" ]
 then
   #declare -a libressl_link_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
-  declare -a libressl_link_targets=("simulator_x86_64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
+  declare -a libressl_link_targets=("simulator_x86_64" "catalyst_x86_64" "macos_x86_64" "ios-arm64")
 fi
 
 set -e
@@ -95,6 +96,7 @@ makeLibreSSL() {
   # only build the files we need (libcrypto, libssl, include files)
   make -C crypto clean all install
   make -C ssl clean all install
+  make -C tls clean all install
   make -C include install
 }
 
@@ -103,23 +105,25 @@ moveLibreSSLOutputInPlace() {
   local output=$2
   cp crypto/.libs/libcrypto.a $OUTPUT/$target/lib
   cp ssl/.libs/libssl.a $OUTPUT/$target/lib
+  cp tls/.libs/libtls.a $OUTPUT/$target/lib
   rsync -am --include='*.h' -f 'hide,! */' include/* $OUTPUT/$target/include
 }
 
 needsRebuilding() {
-  local target=$1
-  test crypto/.libs/libcrypto.a -nt Makefile
-  timestampCompare=$?
-  if [ $timestampCompare -eq 1 ]; then
-    return 0
-  else
-    arch=`/usr/bin/lipo -archs crypto/.libs/libcrypto.a`
-    if [ "$arch" == "$target" ]; then
-      return 1
-    else
-      return 0
-    fi
-  fi
+  return 0
+#  local target=$1
+#  test crypto/.libs/libcrypto.a -nt Makefile
+#  timestampCompare=$?
+#  if [ $timestampCompare -eq 1 ]; then
+#    return 0
+#  else
+#    arch=`/usr/bin/lipo -archs crypto/.libs/libcrypto.a`
+#    if [ "$arch" == "$target" ]; then
+#      return 1
+#    else
+#      return 0
+#    fi
+#  fi
 }
 
 ##############################################
@@ -464,12 +468,14 @@ done
 
 XCFRAMEWORK_LIBSSL_CMD="xcodebuild -create-xcframework"
 XCFRAMEWORK_LIBCRYPTO_CMD="xcodebuild -create-xcframework"
+XCFRAMEWORK_LIBTLS_CMD="xcodebuild -create-xcframework"
 
 framework_targets=()
 
 if [ ${#ios[@]} -gt 0 ]; then
   lipo_libssl="lipo -create "
   lipo_libcrypto="lipo -create "
+  lipo_libtls="lipo -create "
 
   framework_targets+=("ios")
   mkdir -p $OUTPUT/ios/lib
@@ -479,6 +485,7 @@ if [ ${#ios[@]} -gt 0 ]; then
   do
     lipo_libssl="$lipo_libssl $OUTPUT/$target/lib/libssl.a"
     lipo_libcrypto="$lipo_libcrypto $OUTPUT/$target/lib/libcrypto.a"
+    lipo_libtls="$lipo_libtls $OUTPUT/$target/lib/libtls.a"
     rsync -a $OUTPUT/$target/include/* $OUTPUT/ios/include
   done
 
@@ -490,16 +497,24 @@ if [ ${#ios[@]} -gt 0 ]; then
   echo $lipo_libcrypto
   eval $lipo_libcrypto
 
+  lipo_libtls="$lipo_libtls -output $OUTPUT/ios/lib/libtls.a"
+  echo $lipo_libtls
+  eval $lipo_libtls
+
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -library $OUTPUT/ios/lib/libssl.a"
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -headers $OUTPUT/ios/include"
 
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -library $OUTPUT/ios/lib/libcrypto.a"
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -headers $OUTPUT/ios/include"
+
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -library $OUTPUT/ios/lib/libtls.a"
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -headers $OUTPUT/ios/include"
 fi
 
 if [ ${#catalyst[@]} -gt 0 ]; then
   lipo_libssl="lipo -create "
   lipo_libcrypto="lipo -create "
+  lipo_libtls="lipo -create "
 
   framework_targets+=("catalyst")
   mkdir -p $OUTPUT/catalyst/lib
@@ -509,6 +524,7 @@ if [ ${#catalyst[@]} -gt 0 ]; then
   do
     lipo_libssl="$lipo_libssl $OUTPUT/$target/lib/libssl.a"
     lipo_libcrypto="$lipo_libcrypto $OUTPUT/$target/lib/libcrypto.a"
+    lipo_libtls="$lipo_libtls $OUTPUT/$target/lib/libtls.a"
     rsync -a $OUTPUT/$target/include/* $OUTPUT/catalyst/include
   done
 
@@ -520,16 +536,24 @@ if [ ${#catalyst[@]} -gt 0 ]; then
   echo $lipo_libcrypto
   eval $lipo_libcrypto
 
+  lipo_libtls="$lipo_libtls -output $OUTPUT/catalyst/lib/libtls.a"
+  echo $lipo_libtls
+  eval $lipo_libtls
+
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -library $OUTPUT/catalyst/lib/libssl.a"
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -headers $OUTPUT/catalyst/include"
 
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -library $OUTPUT/catalyst/lib/libcrypto.a"
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -headers $OUTPUT/catalyst/include"
+
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -library $OUTPUT/catalyst/lib/libtls.a"
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -headers $OUTPUT/catalyst/include"
 fi
 
 if [ ${#macos[@]} -gt 0 ]; then
   lipo_libssl="lipo -create "
   lipo_libcrypto="lipo -create "
+  lipo_libtls="lipo -create "
 
   framework_targets+=("macos")
   mkdir -p $OUTPUT/macos/lib
@@ -539,6 +563,7 @@ if [ ${#macos[@]} -gt 0 ]; then
   do
     lipo_libssl="$lipo_libssl $OUTPUT/$target/lib/libssl.a"
     lipo_libcrypto="$lipo_libcrypto $OUTPUT/$target/lib/libcrypto.a"
+    lipo_libtls="$lipo_libtls $OUTPUT/$target/lib/libtls.a"
     rsync -a $OUTPUT/$target/include/* $OUTPUT/macos/include
   done
 
@@ -550,16 +575,24 @@ if [ ${#macos[@]} -gt 0 ]; then
   echo $lipo_libcrypto
   eval $lipo_libcrypto
 
+  lipo_libtls="$lipo_libtls -output $OUTPUT/macos/lib/libtls.a"
+  echo $lipo_libtls
+  eval $lipo_libtls
+
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -library $OUTPUT/macos/lib/libssl.a"
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -headers $OUTPUT/macos/include"
 
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -library $OUTPUT/macos/lib/libcrypto.a"
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -headers $OUTPUT/macos/include"
+
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -library $OUTPUT/macos/lib/libtls.a"
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -headers $OUTPUT/macos/include"
 fi
 
 if [ ${#simulator[@]} -gt 0 ]; then
   lipo_libssl="lipo -create "
   lipo_libcrypto="lipo -create "
+  lipo_libtls="lipo -create "
 
   framework_targets+=("simulator")
   mkdir -p $OUTPUT/simulator/lib
@@ -569,6 +602,7 @@ if [ ${#simulator[@]} -gt 0 ]; then
   do
     lipo_libssl="$lipo_libssl $OUTPUT/$target/lib/libssl.a"
     lipo_libcrypto="$lipo_libcrypto $OUTPUT/$target/lib/libcrypto.a"
+    lipo_libtls="$lipo_libtls $OUTPUT/$target/lib/libtls.a"
     rsync -a $OUTPUT/$target/include/* $OUTPUT/simulator/include
   done
 
@@ -580,21 +614,31 @@ if [ ${#simulator[@]} -gt 0 ]; then
   echo $lipo_libcrypto
   eval $lipo_libcrypto
 
+  lipo_libtls="$lipo_libtls -output $OUTPUT/simulator/lib/libtls.a"
+  echo $lipo_libtls
+  eval $lipo_libtls
+
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -library $OUTPUT/simulator/lib/libssl.a"
   XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -headers $OUTPUT/simulator/include"
 
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -library $OUTPUT/simulator/lib/libcrypto.a"
   XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -headers $OUTPUT/simulator/include"
+
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -library $OUTPUT/simulator/lib/libtls.a"
+  XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -headers $OUTPUT/simulator/include"
 fi
 
 XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -output $XCFRAMEWORKS/libssl.xcframework"
 XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -output $XCFRAMEWORKS/libcrypto.xcframework"
+XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -output $XCFRAMEWORKS/libtls.xcframework"
 
 
 echo $XCFRAMEWORK_LIBSSL_CMD
 eval $XCFRAMEWORK_LIBSSL_CMD
 echo $XCFRAMEWORK_LIBCRYPTO_CMD
 eval $XCFRAMEWORK_LIBCRYPTO_CMD
+echo $XCFRAMEWORK_LIBTLS_CMD
+eval $XCFRAMEWORK_LIBTLS_CMD
 
 
 cd ..
