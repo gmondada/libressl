@@ -39,13 +39,13 @@ if [ -z "$libressl_build_targets" ]
 then
   #declare -a libressl_build_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
   #declare -a libressl_build_targets=("simulator_x86_64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
-  declare -a libressl_build_targets=("simulator_x86_64" "catalyst_x86_64" "macos_x86_64" "ios-arm64")
+  declare -a libressl_build_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
 fi
 
 if [ -z "$libressl_link_targets" ]
 then
   #declare -a libressl_link_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
-  declare -a libressl_link_targets=("simulator_x86_64" "catalyst_x86_64" "macos_x86_64" "ios-arm64")
+  declare -a libressl_link_targets=("simulator_x86_64" "simulator_arm64" "catalyst_x86_64" "catalyst_arm64" "macos_x86_64" "macos_arm64" "ios-arm64")
 fi
 
 set -e
@@ -81,7 +81,7 @@ cd libressl-${LIBRESSL}
 if [ -e "./Makefile" ]
 then
   # since we clean before we build, do we still need this??
-    make distclean
+    make distclean || true
 fi
 
 # some bash'isms
@@ -142,7 +142,7 @@ if needsRebuilding "$target" && elementIn "$target" "${libressl_build_targets[@]
   ./configure --host=x86_64-apple-darwin --prefix="$PREFIX/$target" \
     CC="/usr/bin/clang" \
     CPPFLAGS="-I$SDKROOT/usr/include/" \
-    CFLAGS="$CPPFLAGS -arch x86_64h -miphoneos-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
+    CFLAGS="$CPPFLAGS -arch x86_64h -mios-simulator-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
     CPP="/usr/bin/cpp $CPPFLAGS" \
     LD=$DEVROOT/usr/bin/ld
 
@@ -172,7 +172,7 @@ if needsRebuilding "$target" && elementIn "$target" "${libressl_build_targets[@]
   ./configure --host=x86_64-apple-darwin --prefix="$PREFIX/$target" \
     CC="/usr/bin/clang" \
     CPPFLAGS="-I$SDKROOT/usr/include/" \
-    CFLAGS="$CPPFLAGS -arch x86_64 -miphoneos-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
+    CFLAGS="$CPPFLAGS -arch x86_64 -mios-simulator-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
     CPP="/usr/bin/cpp $CPPFLAGS" \
     LD=$DEVROOT/usr/bin/ld
 
@@ -196,9 +196,9 @@ if needsRebuilding "$target" && elementIn "$target" "${libressl_build_targets[@]
 
   #./configure --build=aarch64-apple-darwin --host=aarch64-apple-darwin22 --prefix="$PREFIX/$target" \
   ./configure --prefix="$PREFIX/$target" \
-    CC="/usr/bin/clang -target arm64-apple-ios${IOS}-simulator" \
-    CPPFLAGS="-I$SDKROOT/usr/include/ -target arm64-apple-ios${IOS}-simulator" \
-    CFLAGS="$CPPFLAGS -arch arm64e -miphoneos-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
+    CC="/usr/bin/clang -target arm64-apple-ios-simulator" \
+    CPPFLAGS="-I$SDKROOT/usr/include/ -target arm64-apple-ios-simulator" \
+    CFLAGS="$CPPFLAGS -arch arm64e -mios-simulator-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
     CPP="/usr/bin/cpp $CPPFLAGS" \
     LD=$DEVROOT/usr/bin/ld
 
@@ -221,9 +221,9 @@ if needsRebuilding "$target" && elementIn "$target" "${libressl_build_targets[@]
   SDKROOT=$DEVROOT/SDKs/iPhoneSimulator${IOS}.sdk
 
   ./configure --host=aarch64-apple-darwin --prefix="$PREFIX/$target" \
-    CC="/usr/bin/clang -target arm64-apple-ios${IOS}-simulator" \
+    CC="/usr/bin/clang -target arm64-apple-ios-simulator" \
     CPPFLAGS="-I$SDKROOT/usr/include/" \
-    CFLAGS="$CPPFLAGS -arch arm64 -miphoneos-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
+    CFLAGS="$CPPFLAGS -arch arm64 -mios-simulator-version-min=${MIN_IOS_VERSION} -pipe -no-cpp-precomp -isysroot $SDKROOT" \
     CPP="/usr/bin/cpp $CPPFLAGS" \
     LD=$DEVROOT/usr/bin/ld
 
@@ -398,7 +398,7 @@ if needsRebuilding "$target" && elementIn "$target" "${libressl_build_targets[@]
   DEVROOT=$XCODE/Platforms/MacOSX.platform/Developer
   SDKROOT=$DEVROOT/SDKs/MacOSX${MACOSX}.sdk
 
-  ./configure --prefix="$PREFIX/$target" \
+  ./configure --host=aarch64-apple-darwin --prefix="$PREFIX/$target" \
     CC="/usr/bin/clang -isysroot $SDKROOT" \
     CPPFLAGS="-fembed-bitcode -I$SDKROOT/usr/include/" \
     CFLAGS="$CPPFLAGS -arch arm64 -pipe -no-cpp-precomp" \
@@ -449,6 +449,7 @@ catalyst=()
 simulator=()
 ios=()
 
+printf "\n\n--> lipo & XCFramework --\n\n"
 
 for target in "${libressl_link_targets[@]}"
 do
@@ -628,6 +629,7 @@ if [ ${#simulator[@]} -gt 0 ]; then
   XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -headers $OUTPUT/simulator/include"
 fi
 
+rm -rf $XCFRAMEWORKS/* || true
 XCFRAMEWORK_LIBSSL_CMD="$XCFRAMEWORK_LIBSSL_CMD -output $XCFRAMEWORKS/libssl.xcframework"
 XCFRAMEWORK_LIBCRYPTO_CMD="$XCFRAMEWORK_LIBCRYPTO_CMD -output $XCFRAMEWORKS/libcrypto.xcframework"
 XCFRAMEWORK_LIBTLS_CMD="$XCFRAMEWORK_LIBTLS_CMD -output $XCFRAMEWORKS/libtls.xcframework"
